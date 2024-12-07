@@ -2,7 +2,6 @@ import ETF from "../models/ETF";
 
 export const createETF = async (req: any, res: any) => {
 
-  console.log("called")
   try {
     const { name, link, userId } = req.body;
 

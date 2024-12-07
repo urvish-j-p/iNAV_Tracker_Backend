@@ -26,7 +26,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/etfs", etfRoutes);
 
 app.get("/", (req, res) => {
-  res.send("This is a i-NAV api");
+  res.send("This is a i-NAV api!");
 });
 
 const PORT = 5000;

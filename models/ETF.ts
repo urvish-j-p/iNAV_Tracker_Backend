@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 interface IETF extends mongoose.Document {
   name: string;
-  symbol: string;
+  link: string;
   userId: mongoose.Types.ObjectId;
 }
 
@@ -12,7 +12,7 @@ const etfSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    symbol: {
+    link: {
       type: String,
       required: true,
     },

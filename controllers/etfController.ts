@@ -119,6 +119,9 @@ export const searchETFs = async (req: any, res: any) => {
   }
 };
 
+let cachedCookies: string | null = null;
+let cookieExpiry: number | null = null;
+
 export const fetchNseData = async (req: any, res: any) => {
   const { symbol } = req.query;
 
@@ -127,44 +130,56 @@ export const fetchNseData = async (req: any, res: any) => {
   }
 
   try {
-    // Step 1: Establish session and retrieve cookies
-    const sessionResponse = await fetch(
-      `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
-      {
-        method: "GET",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-          Accept: "text/html",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      }
-    );
+    // Check if cookies are cached and still valid
+    if (!cachedCookies || (cookieExpiry && Date.now() > cookieExpiry)) {
+      console.log("Fetching new cookies...");
 
-    // Extract cookies from headers
-    const setCookieHeaders: string[] = [];
-    sessionResponse.headers.forEach((value, key) => {
-      if (key.toLowerCase() === "set-cookie") {
-        setCookieHeaders.push(value);
-      }
-    });
+      // Step 1: Establish session and retrieve cookies
+      const sessionResponse = await fetch(
+        `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            Accept: "text/html",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+        }
+      );
 
-    if (setCookieHeaders.length === 0) {
-      return res.status(500).json({ message: "Failed to establish session" });
+      // Extract cookies from headers
+      const setCookieHeaders: string[] = [];
+      sessionResponse.headers.forEach((value, key) => {
+        if (key.toLowerCase() === "set-cookie") {
+          setCookieHeaders.push(value);
+        }
+      });
+
+      if (setCookieHeaders.length === 0) {
+        return res.status(500).json({ message: "Failed to establish session" });
+      }
+
+      // Parse and cache cookies
+      cachedCookies = setCookieHeaders
+        .map((cookie) => cookie.split(";")[0])
+        .filter(
+          (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
+        )
+        .join("; ");
+
+      if (
+        !cachedCookies.includes("nseappid") ||
+        !cachedCookies.includes("nsit")
+      ) {
+        return res.status(500).json({ message: "Required cookies not found" });
+      }
+
+      // Set cookie expiry time (e.g., 30 minutes from now)
+      cookieExpiry = Date.now() + 30 * 60 * 1000; // 30 minutes in milliseconds
     }
 
-    const cookies = setCookieHeaders
-      .map((cookie) => cookie.split(";")[0])
-      .filter(
-        (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
-      )
-      .join("; ");
-
-    if (!cookies.includes("nseappid") || !cookies.includes("nsit")) {
-      return res.status(500).json({ message: "Required cookies not found" });
-    }
-
-    // Step 2: Fetch data from NSE API using cookies
+    // Step 2: Fetch data from NSE API using cached cookies
     const nseResponse = await fetch(
       `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`,
       {
@@ -175,7 +190,7 @@ export const fetchNseData = async (req: any, res: any) => {
           Accept: "application/json",
           "Accept-Language": "en-US,en;q=0.9",
           Referer: `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
-          Cookie: cookies,
+          Cookie: cachedCookies,
         },
       }
     );
@@ -191,8 +206,8 @@ export const fetchNseData = async (req: any, res: any) => {
 
     // Dynamically allow origins
     const allowedOrigins = [
-      "http://localhost:5173", // Add your local frontend URL
-      "https://i-nav-tracker-by-urvish.vercel.app", // Add your deployed frontend URL
+      "http://localhost:5173", // Local frontend URL
+      "https://i-nav-tracker-by-urvish.vercel.app", // Deployed frontend URL
     ];
 
     const origin = req.headers.origin;

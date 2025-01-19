@@ -121,6 +121,51 @@ export const searchETFs = async (req: any, res: any) => {
 
 let cachedCookies: string | null = null;
 let cookieExpiry: number | null = null;
+const symbolCache = new Map(); // Cache for NSE data
+
+const updateCookies = async () => {
+  try {
+    const sessionResponse = await fetch(
+      `https://www.nseindia.com/get-quotes/equity?symbol=ALPHA`,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Accept: "text/html",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      }
+    );
+
+    const setCookieHeaders: string[] = [];
+    sessionResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() === "set-cookie") {
+        setCookieHeaders.push(value);
+      }
+    });
+
+    if (setCookieHeaders.length > 0) {
+      cachedCookies = setCookieHeaders
+        .map((cookie) => cookie.split(";")[0])
+        .filter(
+          (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
+        )
+        .join("; ");
+
+      cookieExpiry = Date.now() + 30 * 60 * 1000; // Cache cookies for 30 minutes
+      console.log("Cookies updated successfully.");
+    } else {
+      console.error("Failed to fetch NSE cookies.");
+    }
+  } catch (error) {
+    console.error("Error updating cookies:", error);
+  }
+};
+
+// Periodically refresh cookies
+setInterval(updateCookies, 25 * 60 * 1000); // Refresh cookies every 25 minutes
+updateCookies(); // Fetch cookies on startup
 
 export const fetchNseData = async (req: any, res: any) => {
   const { symbol } = req.query;
@@ -130,55 +175,20 @@ export const fetchNseData = async (req: any, res: any) => {
   }
 
   try {
-    // Check if cookies are cached and still valid
-    if (!cachedCookies || (cookieExpiry && Date.now() > cookieExpiry)) {
-
-      // Step 1: Establish session and retrieve cookies
-      const sessionResponse = await fetch(
-        `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
-        {
-          method: "GET",
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            Accept: "text/html",
-            "Accept-Language": "en-US,en;q=0.9",
-          },
-        }
-      );
-
-      // Extract cookies from headers
-      const setCookieHeaders: string[] = [];
-      sessionResponse.headers.forEach((value, key) => {
-        if (key.toLowerCase() === "set-cookie") {
-          setCookieHeaders.push(value);
-        }
-      });
-
-      if (setCookieHeaders.length === 0) {
-        return res.status(500).json({ message: "Failed to establish session" });
+    // Check if cached data exists
+    if (symbolCache.has(symbol)) {
+      const cachedData = symbolCache.get(symbol);
+      if (Date.now() - cachedData.timestamp < 5 * 60 * 1000) {
+        // Return cached data if it's less than 5 minutes old
+        return res.json(cachedData.data);
       }
-
-      // Parse and cache cookies
-      cachedCookies = setCookieHeaders
-        .map((cookie) => cookie.split(";")[0])
-        .filter(
-          (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
-        )
-        .join("; ");
-
-      if (
-        !cachedCookies.includes("nseappid") ||
-        !cachedCookies.includes("nsit")
-      ) {
-        return res.status(500).json({ message: "Required cookies not found" });
-      }
-
-      // Set cookie expiry time (e.g., 30 minutes from now)
-      cookieExpiry = Date.now() + 30 * 60 * 1000; // 30 minutes in milliseconds
     }
 
-    // Step 2: Fetch data from NSE API using cached cookies
+    // Use cached cookies
+    if (!cachedCookies || (cookieExpiry && Date.now() > cookieExpiry)) {
+      return res.status(500).json({ message: "Cookies not available" });
+    }
+
     const nseResponse = await fetch(
       `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`,
       {
@@ -203,28 +213,15 @@ export const fetchNseData = async (req: any, res: any) => {
     const data = await nseResponse.json();
     const { priceInfo } = data;
 
-    // Dynamically allow origins
-    const allowedOrigins = [
-      "http://localhost:5173", // Local frontend URL
-      "https://i-nav-tracker-by-urvish.vercel.app", // Deployed frontend URL
-    ];
-
-    const origin = req.headers.origin;
-
-    if (allowedOrigins.includes(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-    }
-
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
-
-    res.json({
+    const responseData = {
       lastPrice: priceInfo?.lastPrice || null,
       iNavValue: priceInfo?.iNavValue || null,
-    });
+    };
+
+    // Cache response data for the symbol
+    symbolCache.set(symbol, { data: responseData, timestamp: Date.now() });
+
+    res.json(responseData);
   } catch (error) {
     console.error("Error fetching NSE data:", error);
     res.status(500).json({ message: "Error fetching NSE data" });

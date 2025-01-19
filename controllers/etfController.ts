@@ -127,26 +127,56 @@ export const fetchNseData = async (req: any, res: any) => {
   }
 
   try {
-    const response = await fetch(
+    // Step 1: Establish session and retrieve cookies
+    const sessionResponse = await fetch(
+      `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
+      {
+        method: "GET",
+      }
+    );
+
+    // Extract cookies from headers
+    const setCookieHeaders: string[] = [];
+    sessionResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() === "set-cookie") {
+        setCookieHeaders.push(value);
+      }
+    });
+
+    if (setCookieHeaders.length === 0) {
+      return res.status(500).json({ message: "Failed to establish session" });
+    }
+
+    // Parse cookies and extract nseappid and nsit
+    const cookies = setCookieHeaders
+      .map((cookie) => cookie.split(";")[0]) // Extract the cookie key-value pair
+      .filter(
+        (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
+      ) // Filter nseappid and nsit
+      .join("; "); // Join cookies as a single string
+
+    if (!cookies.includes("nseappid") || !cookies.includes("nsit")) {
+      return res.status(500).json({ message: "Required cookies not found" });
+    }
+
+    // Step 2: Make a second request to fetch data using the cookies
+    const nseResponse = await fetch(
       `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`,
       {
+        method: "GET",
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-          Accept: "application/json",
-          "Accept-Language": "en-US,en;q=0.9",
-          Referer: "https://www.nseindia.com/",
+          Cookie: cookies,
         },
       }
     );
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        message: `Failed to fetch NSE data: ${response.statusText}`,
+    if (!nseResponse.ok) {
+      return res.status(nseResponse.status).json({
+        message: `Failed to fetch NSE data: ${nseResponse.statusText}`,
       });
     }
 
-    const data = await response.json();
+    const data = await nseResponse.json();
     const { priceInfo } = data;
 
     res.json({

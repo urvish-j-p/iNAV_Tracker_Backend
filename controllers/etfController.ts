@@ -132,6 +132,12 @@ export const fetchNseData = async (req: any, res: any) => {
       `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
       {
         method: "GET",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Accept: "text/html",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       }
     );
 
@@ -147,24 +153,28 @@ export const fetchNseData = async (req: any, res: any) => {
       return res.status(500).json({ message: "Failed to establish session" });
     }
 
-    // Parse cookies and extract nseappid and nsit
     const cookies = setCookieHeaders
-      .map((cookie) => cookie.split(";")[0]) // Extract the cookie key-value pair
+      .map((cookie) => cookie.split(";")[0])
       .filter(
         (cookie) => cookie.startsWith("nseappid") || cookie.startsWith("nsit")
-      ) // Filter nseappid and nsit
-      .join("; "); // Join cookies as a single string
+      )
+      .join("; ");
 
     if (!cookies.includes("nseappid") || !cookies.includes("nsit")) {
       return res.status(500).json({ message: "Required cookies not found" });
     }
 
-    // Step 2: Make a second request to fetch data using the cookies
+    // Step 2: Fetch data from NSE API using cookies
     const nseResponse = await fetch(
       `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`,
       {
         method: "GET",
         headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          Accept: "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+          Referer: `https://www.nseindia.com/get-quotes/equity?symbol=${symbol}`,
           Cookie: cookies,
         },
       }
@@ -178,6 +188,24 @@ export const fetchNseData = async (req: any, res: any) => {
 
     const data = await nseResponse.json();
     const { priceInfo } = data;
+
+    // Dynamically allow origins
+    const allowedOrigins = [
+      "http://localhost:5173", // Add your local frontend URL
+      "https://i-nav-tracker-by-urvish.vercel.app", // Add your deployed frontend URL
+    ];
+
+    const origin = req.headers.origin;
+
+    if (allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
 
     res.json({
       lastPrice: priceInfo?.lastPrice || null,

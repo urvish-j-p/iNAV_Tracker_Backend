@@ -132,7 +132,6 @@ export const fetchNseData = async (req: any, res: any) => {
   try {
     // Check if cookies are cached and still valid
     if (!cachedCookies || (cookieExpiry && Date.now() > cookieExpiry)) {
-      console.log("Fetching new cookies...");
 
       // Step 1: Establish session and retrieve cookies
       const sessionResponse = await fetch(

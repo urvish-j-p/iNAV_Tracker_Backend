@@ -29,6 +29,10 @@ app.get("/", (req, res) => {
   res.send("This is a i-NAV api!");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

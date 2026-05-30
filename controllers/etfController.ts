@@ -44,7 +44,7 @@ export const getETFs = async (req: any, res: any) => {
           // Delay each request slightly
           await delay(index * 300);
 
-          const quotePageURL = `https://www.nseindia.com/get-quotes/equity?symbol=${etf.link}`;
+          const quotePageURL = `https://www.nseindia.com/get-quote/equity/${etf.link}/${etf.link.toLowerCase()}`;
 
           // Step 1: Load quote page to get fresh cookies
           const homepage = await axios.get(quotePageURL, {
@@ -60,12 +60,11 @@ export const getETFs = async (req: any, res: any) => {
           // Step 2: Filter essential cookies
           const filteredCookies = rawCookies
             .map((cookie) => cookie.split(";")[0])
-            .slice(0, 3)
             .join("; ");
 
           // Step 3: Fetch live ETF data using cookies
           const quoteRes = await axios.get(
-            `https://www.nseindia.com/api/quote-equity?symbol=${etf.link}`,
+            `https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=EQ&symbol=${etf.link}`,
             {
               headers: {
                 ...browserHeaders,
@@ -76,12 +75,14 @@ export const getETFs = async (req: any, res: any) => {
             }
           );
 
-          const priceInfo = quoteRes.data?.priceInfo || {};
+          const equityData = quoteRes.data?.equityResponse?.[0] || {};
+          const priceInfo = equityData.priceInfo || {};
+          const orderBook = equityData.orderBook || {};
 
           return {
             ...etf.toObject(),
-            iNavValue: priceInfo?.iNavValue ?? null,
-            lastPrice: priceInfo?.lastPrice ?? null,
+            iNavValue: priceInfo?.inav ?? null,
+            lastPrice: orderBook?.lastPrice ?? null,
           };
         } catch (error: any) {
           console.error(
